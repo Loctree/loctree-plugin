@@ -28,7 +28,7 @@ command -v jq   >/dev/null 2>&1 || exit 0
 # Configuration
 # ---------------------------------------------------------------------------
 CRITICAL_THRESHOLD=10  # Show warning if 10+ direct consumers
-LOG_FILE="${LOCT_HOOK_LOG_FILE:-$HOME/.claude/logs/loct-hook.log}"
+LOG_FILE="${LOCT_HOOK_LOG_FILE:-${CLAUDE_LOCAL_DIR:-$HOME/.claude}/logs/loct-hook.log}"
 mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
 
 log_line() {
@@ -125,7 +125,11 @@ WARNING_MSG=""
 
 if [[ "$DIRECT_COUNT" -ge "$CRITICAL_THRESHOLD" ]]; then
   IS_CRITICAL="true"
-  WARNING_MSG="⚠️  CRITICAL FILE: ${REL_PATH} has ${DIRECT_COUNT} direct consumers (${TOTAL_AFFECTED} total affected). Changes here have HIGH IMPACT."
+  WARNING_MSG="⚠️  CRITICAL FILE: ${REL_PATH} has ${DIRECT_COUNT} direct consumers"
+  if [[ ${TOTAL_AFFECTED:-0} -gt "$DIRECT_COUNT" ]]; then
+    WARNING_MSG+=" (${TOTAL_AFFECTED} total affected)"
+  fi
+  WARNING_MSG+=". Changes here have HIGH IMPACT."
 fi
 
 # Build context (always include impact)

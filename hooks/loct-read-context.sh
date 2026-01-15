@@ -20,7 +20,7 @@ export PATH="$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PA
 # ---------------------------------------------------------------------------
 # Debug: log every invocation to verify hook is triggered
 # ---------------------------------------------------------------------------
-DEBUG_LOG="$HOME/.claude/logs/loct-read-debug.log"
+DEBUG_LOG="${CLAUDE_LOCAL_DIR:-$HOME/.claude}/logs/loct-read-debug.log"
 mkdir -p "$(dirname "$DEBUG_LOG")" 2>/dev/null || true
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Hook invoked" >> "$DEBUG_LOG"
 
@@ -33,7 +33,7 @@ command -v jq   >/dev/null 2>&1 || exit 0
 # ---------------------------------------------------------------------------
 # Logging (optional, same location as grep hook)
 # ---------------------------------------------------------------------------
-LOG_FILE="${LOCT_HOOK_LOG_FILE:-$HOME/.claude/logs/loct-hook.log}"
+LOG_FILE="${LOCT_HOOK_LOG_FILE:-${CLAUDE_LOCAL_DIR:-$HOME/.claude}/logs/loct-hook.log}"
 mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
 
 log_line() {
@@ -73,7 +73,6 @@ fi
 # ---------------------------------------------------------------------------
 # Working directory & repo root discovery
 # ---------------------------------------------------------------------------
-SESSION_CWD="$(printf '%s' "$HOOK_INPUT" | jq -r '.session_cwd // .cwd // empty' 2>/dev/null)"
 FILE_DIR="$(dirname "$FILE_PATH")"
 
 # Try to find repo root (with .loctree)

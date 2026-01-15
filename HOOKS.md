@@ -242,12 +242,16 @@ The Edit hook uses `PostToolUse` (not `PreToolUse`) because:
 
 ### Debug Logging
 
-Each hook writes debug logs:
+All hooks write to a shared log file:
 
 ```
-$CLAUDE_LOCAL_DIR/logs/loct-grep-debug.log
+$CLAUDE_LOCAL_DIR/logs/loct-hook.log
+```
+
+The Read hook also writes invocation timestamps to:
+
+```
 $CLAUDE_LOCAL_DIR/logs/loct-read-debug.log
-$CLAUDE_LOCAL_DIR/logs/loct-edit-debug.log
 ```
 
 Enable verbose output:
@@ -276,7 +280,7 @@ export LOCT_DEBUG=1
 
 4. **Check debug logs:**
    ```bash
-   tail -50 $CLAUDE_LOCAL_DIR/logs/loct-grep-debug.log
+   tail -50 $CLAUDE_LOCAL_DIR/logs/loct-hook.log
    ```
 
 ### No Output for Searches
@@ -322,4 +326,4 @@ export LOCT_DEBUG=1
 
 ---
 
-**Made with (gom_gom)g by the Loctree team (c) 2026**
+**Made with (งಠ_ಠ)ง by the Loctree team (c) 2026**
