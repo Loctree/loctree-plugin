@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# loct-grep-augment.sh v13 - CLEAN OUTPUT + SMART MULTI-TERM PARSING
+# loct-grep-augment.sh v14 - FIX CWD MISMATCH + OUTPUT CAP
 # ============================================================================
 # Purpose:
 #   PostToolUse hook for Claude Code that augments rg/grep searches with loctree
@@ -170,10 +170,27 @@ extract_count() {
   printf '%s\n' "$text" | sed -nE "s/^=== ${label} \(([0-9]+)\) ===$/\1/p" | head -1
 }
 
+# Max payload size (32KB) to avoid bloating additionalContext
+MAX_PAYLOAD_BYTES=32768
+
+truncate_payload() {
+  local text="$1"
+  local max="$2"
+  if [[ ${#text} -gt $max ]]; then
+    printf '%s\n\n[...truncated, showing first %d bytes of %d total]' \
+      "${text:0:$max}" "$max" "${#text}"
+  else
+    printf '%s' "$text"
+  fi
+}
+
 emit_hook_output() {
   # emit_hook_output <action> <payload>
   local action="$1"
   local payload="$2"
+
+  # Truncate if too large
+  payload="$(truncate_payload "$payload" "$MAX_PAYLOAD_BYTES")"
 
   # Repo label (best effort)
   local repo
@@ -232,8 +249,11 @@ PATH_ARG="."
 parse_rg_grep_command() {
   # Parses a shell command string and extracts:
   #   - pattern (first non-flag after rg/grep)
-  #   - path (last existing file/dir after pattern)
+  #   - path (last non-flag token after pattern, WITHOUT checking FS)
   # Uses python shlex for robust quoting.
+  #
+  # NOTE: We do NOT check if path exists here — that's done AFTER cd to SESSION_CWD.
+  #       This fixes the cwd mismatch bug where relative paths weren't found.
   local cmd="$1"
 
   # Ignore everything after first pipe for token parsing
@@ -242,8 +262,9 @@ parse_rg_grep_command() {
   local tool_index=-1
   local -a toks=()
 
-  # shlex split via python
-  mapfile -t toks < <(python3 - <<'PY'
+  # shlex split via python (with fallback if python3 unavailable)
+  if command -v python3 >/dev/null 2>&1; then
+    mapfile -t toks < <(python3 - <<'PY'
 import shlex, sys
 cmd = sys.stdin.read()
 try:
@@ -254,6 +275,10 @@ for p in parts:
   print(p)
 PY
 <<<"$cmd" 2>/dev/null)
+  else
+    # Fallback: simple split (less robust but works for most cases)
+    read -ra toks <<<"$cmd"
+  fi
 
   # Find the first rg/grep token
   local i
@@ -268,7 +293,7 @@ PY
 
   [[ "$tool_index" -lt 0 ]] && return 1
 
-  # Parse pattern
+  # Parse pattern: first non-flag after tool
   local pattern=""
   i=$((tool_index + 1))
   for ((; i<${#toks[@]}; i++)); do
@@ -285,15 +310,17 @@ PY
 
   [[ -z "$pattern" ]] && return 1
 
-  # Parse path: walk backwards from end to i, pick last existing file/dir
+  # Parse path: last non-flag token after pattern (NO FS check here!)
   local path="."
   local j
   for ((j=${#toks[@]}-1; j>=i; j--)); do
     local candidate="${toks[$j]}"
-    if [[ -e "$candidate" || -d "$candidate" ]]; then
-      path="$candidate"
-      break
-    fi
+    # Skip flags and empty tokens
+    [[ "$candidate" == -* ]] && continue
+    [[ -z "$candidate" ]] && continue
+    # Accept as path candidate (will be validated after cd)
+    path="$candidate"
+    break
   done
 
   printf '%s\n%s\n' "$pattern" "$path"
@@ -315,9 +342,16 @@ if [[ "${1:-}" == "--bash-filter" ]]; then
     [[ -z "$PATTERN" ]] && PATTERN="$(printf '%s' "$COMMAND" | grep -oE "'[^']+'" | head -1 | tr -d "'")"
     [[ -z "$PATTERN" ]] && PATTERN="$(printf '%s' "$COMMAND" | sed -nE 's/.*\b(rg|grep)\b[[:space:]]+([^[:space:]-][^[:space:]]*).*/\2/p')"
 
+    # Fallback path: last token that's not a flag (validated after cd)
     GREP_CMD="${COMMAND%%|*}"
-    PATH_ARG="$(printf '%s' "$GREP_CMD" | awk '{print $NF}')"
-    [[ ! -e "$PATH_ARG" && ! -d "$PATH_ARG" ]] && PATH_ARG="."
+    local last_token
+    last_token="$(printf '%s' "$GREP_CMD" | awk '{print $NF}')"
+    # Only use if it doesn't look like a flag
+    if [[ "$last_token" != -* ]] && [[ -n "$last_token" ]]; then
+      PATH_ARG="$last_token"
+    else
+      PATH_ARG="."
+    fi
   fi
 else
   PATTERN="$(printf '%s' "$HOOK_INPUT" | jq -r '.tool_input.pattern // empty' 2>/dev/null)"
@@ -350,13 +384,24 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Validate PATH_ARG now that we're in the correct cwd
+# ---------------------------------------------------------------------------
+if [[ "$PATH_ARG" != "." ]] && [[ ! -e "$PATH_ARG" ]] && [[ ! -d "$PATH_ARG" ]]; then
+  # Path doesn't exist in repo — reset to "."
+  PATH_ARG="."
+fi
+
+# ---------------------------------------------------------------------------
 # Validation / filtering
 # ---------------------------------------------------------------------------
 [[ -z "$PATTERN" ]] && exit 0
 [[ ${#PATTERN} -lt 3 ]] && exit 0
 
-# Skip heavy regex patterns (avoid accidental expensive work)
-printf '%s' "$PATTERN" | grep -qE '[\|\*\+\?\[\]\(\)\{\}\\]{3,}' && exit 0
+# Skip truly heavy regex patterns (nested groups, excessive wildcards)
+# But allow simple alternations like foo|bar|baz
+if printf '%s' "$PATTERN" | grep -qE '(\([^)]*\)){3,}'; then exit 0; fi  # 3+ nested groups
+if printf '%s' "$PATTERN" | grep -qE '(\.\*.*){4,}'; then exit 0; fi     # 4+ .* wildcards
+if printf '%s' "$PATTERN" | grep -qE '\(\?[!=<]'; then exit 0; fi        # lookaheads/lookbehinds
 
 # Strip outer quotes
 PATTERN="${PATTERN%\"}"; PATTERN="${PATTERN#\"}"
