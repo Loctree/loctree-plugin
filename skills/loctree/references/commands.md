@@ -120,7 +120,7 @@ Most commands support:
 
 ## Environment Variables
 
-- `LOCT_HOOK_LOG_FILE` - Hook log location (default: `~/.claude/logs/loct-hook.log`)
+- `LOCT_HOOK_LOG_FILE` - Hook log location (default: `$CLAUDE_LOCAL_DIR/logs/loct-hook.log`)
 
 ---
 

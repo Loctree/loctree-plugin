@@ -142,12 +142,12 @@ When called with `--bash-filter`, the hook:
 
 ```
 LOCTREE FILE CONTEXT
-repo: vista-app
-file: src/contexts/AuthContext.tsx
+repo: my-app
+file: src/contexts/AppContext.tsx
 
 --- FILE STRUCTURE (slice) ---
 Core (1 files, 420 LOC)
-├── src/contexts/AuthContext.tsx
+├── src/contexts/AppContext.tsx
 Deps (5 files, 1,890 LOC)
 ├── src/types/auth.ts
 ├── src/services/api.ts
@@ -194,7 +194,7 @@ CRITICAL_THRESHOLD=10  # Files with 10+ direct consumers
 ### Example Output (Critical File)
 
 ```
-[!] CRITICAL FILE: src/contexts/ThemeContext.tsx has 16 direct consumers
+[!] CRITICAL FILE: src/core/StateManager.tsx has 16 direct consumers
 (67 total affected). Changes here have HIGH IMPACT.
 
 --- IMPACT ANALYSIS ---

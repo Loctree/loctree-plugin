@@ -80,7 +80,7 @@ When Claude reads a source file, the hook automatically provides:
 ```
 LOCTREE FILE CONTEXT
 repo: my-project
-file: src/contexts/AuthContext.tsx
+file: src/contexts/AppContext.tsx
 
 --- FILE STRUCTURE (slice) ---
 Core (1 files, 420 LOC)
@@ -101,7 +101,7 @@ After Claude edits a file, the hook analyzes impact and warns about critical fil
 - **Change awareness** — helps Claude understand ripple effects
 
 ```
-[!] CRITICAL FILE: src/contexts/ThemeContext.tsx has 16 direct consumers
+[!] CRITICAL FILE: src/core/StateManager.tsx has 16 direct consumers
 (67 total affected). Changes here have HIGH IMPACT.
 ```
 
@@ -199,13 +199,13 @@ loct scan
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  You: "Look at src/contexts/AuthContext.tsx"                │
+│  You: "Look at src/contexts/AppContext.tsx"                 │
 │                    ↓                                        │
 │  Claude runs: Read tool                                     │
 │                    ↓                                        │
 │  PostToolUse Hook activates                                 │
-│  - Runs: loct slice "src/contexts/AuthContext.tsx"          │
-│  - Runs: loct impact "src/contexts/AuthContext.tsx"         │
+│  - Runs: loct slice "src/contexts/AppContext.tsx"           │
+│  - Runs: loct impact "src/contexts/AppContext.tsx"          │
 │                    ↓                                        │
 │  Claude sees file content + context:                        │
 │  ┌───────────────────────────────────────────────────┐     │
@@ -223,15 +223,15 @@ loct scan
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  Claude edits src/contexts/ThemeContext.tsx                 │
+│  Claude edits src/core/StateManager.tsx                     │
 │                    ↓                                        │
 │  PostToolUse Hook activates                                 │
-│  - Runs: loct impact "src/contexts/ThemeContext.tsx"        │
+│  - Runs: loct impact "src/core/StateManager.tsx"            │
 │  - Detects: 16 direct consumers (above threshold)           │
 │                    ↓                                        │
 │  [!] CRITICAL FILE WARNING                                  │
 │  ┌───────────────────────────────────────────────────┐     │
-│  │ src/contexts/ThemeContext.tsx has 16 direct       │     │
+│  │ src/core/StateManager.tsx has 16 direct           │     │
 │  │ consumers (67 total affected).                    │     │
 │  │ Changes here have HIGH IMPACT.                    │     │
 │  └───────────────────────────────────────────────────┘     │
