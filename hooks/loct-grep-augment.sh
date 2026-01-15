@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# loct-grep-augment.sh v14 - FIX CWD MISMATCH + OUTPUT CAP
+# loct-grep-augment.sh v14 - SNAKE_CASE + CWD + OUTPUT CAP
 # ============================================================================
 # Purpose:
 #   PostToolUse hook for Claude Code that augments rg/grep searches with loctree
@@ -102,31 +102,65 @@ HOOK_EVENT_NAME="$(printf '%s' "$HOOK_INPUT" | jq -r '.hook_event_name // empty'
 # This script is intended for PostToolUse, but we fail open.
 
 # ---------------------------------------------------------------------------
-# Log the original Claude search (best effort)
+# Log the original Claude search (best effort) - CLEAN ASCII format
 # ---------------------------------------------------------------------------
 log_claude_search() {
   local tool_name tool_pattern tool_path
   tool_name="$(printf '%s' "$HOOK_INPUT" | jq -r '.tool_name // "(unknown)"' 2>/dev/null)"
   tool_pattern="$(printf '%s' "$HOOK_INPUT" | jq -r '.tool_input.pattern // .tool_input.command // "(unknown)"' 2>/dev/null)"
   tool_path="$(printf '%s' "$HOOK_INPUT" | jq -r '.tool_input.path // "."' 2>/dev/null)"
-  # tool_response can be large; log a small preview.
-  local tool_resp_preview
-  tool_resp_preview="$(printf '%s' "$HOOK_INPUT" | jq -c '.tool_response // empty' 2>/dev/null | head -c 2000)"
+
+  # Shorten pattern if too long
+  [[ ${#tool_pattern} -gt 60 ]] && tool_pattern="${tool_pattern:0:57}..."
 
   log_line ""
-  log_line "==== CLAUDE TOOL USE ===="
+  log_line "==== CLAUDE: $tool_name ===="
   log_line "time:    $(date '+%Y-%m-%d %H:%M:%S')"
-  log_line "event:   ${HOOK_EVENT_NAME:-?}"
-  log_line "tool:    $tool_name"
   log_line "pattern: $tool_pattern"
   log_line "path:    $tool_path"
-  if [[ -n "$tool_resp_preview" ]]; then
-    log_line "tool_response (preview):"
-    while IFS= read -r line; do
-      log_line "  $line"
-    done <<<"$tool_resp_preview"
+
+  # Parse tool_response based on tool type
+  local tool_resp
+  tool_resp="$(printf '%s' "$HOOK_INPUT" | jq '.tool_response // empty' 2>/dev/null)"
+
+  if [[ -n "$tool_resp" && "$tool_resp" != "null" ]]; then
+    if [[ "$tool_name" == "Grep" ]]; then
+      local mode num_files
+      mode="$(printf '%s' "$tool_resp" | jq -r '.mode // "?"' 2>/dev/null)"
+      num_files="$(printf '%s' "$tool_resp" | jq -r '.numFiles // 0' 2>/dev/null)"
+      log_line "result:  $num_files files ($mode)"
+
+      # Show filenames
+      printf '%s' "$tool_resp" | jq -r '.filenames[]? // empty' 2>/dev/null | head -10 | while IFS= read -r filepath; do
+        local short="${filepath##*/Libraxis/}"
+        [[ ${#short} -gt 60 ]] && short="...${short: -57}"
+        log_line "  -> $short"
+      done
+
+    elif [[ "$tool_name" == "Bash" ]]; then
+      local stdout
+      stdout="$(printf '%s' "$tool_resp" | jq -r '.stdout // ""' 2>/dev/null)"
+      if [[ -n "$stdout" ]]; then
+        local lc
+        lc="$(printf '%s' "$stdout" | wc -l | tr -d ' ')"
+        log_line "result:  $lc lines"
+        printf '%s' "$stdout" | head -8 | while IFS= read -r line; do
+          # Smart shorten for grep output (path:line:content)
+          if [[ "$line" == *:*:* ]]; then
+            local fp="${line%%:*}" rest="${line#*:}"
+            local fn="${fp##*/}" par="${fp%/*}"; par="${par##*/}"
+            line="$par/$fn:$rest"
+          fi
+          [[ ${#line} -gt 70 ]] && line="${line:0:67}..."
+          log_line "  $line"
+        done
+        [[ "$lc" -gt 8 ]] && log_line "  ... (+$((lc - 8)) more)"
+      else
+        log_line "result:  (empty)"
+      fi
+    fi
   fi
-  log_line "=========================="
+  log_line "============================"
 }
 
 log_claude_search
@@ -260,11 +294,10 @@ parse_rg_grep_command() {
   cmd="${cmd%%|*}"
 
   local tool_index=-1
-  local -a toks=()
 
-  # shlex split via python (with fallback if python3 unavailable)
-  if command -v python3 >/dev/null 2>&1; then
-    mapfile -t toks < <(python3 - <<'PY'
+  # shlex split via python - bash 3.2 compatible (no mapfile)
+  local toks_output
+  toks_output="$(printf '%s' "$cmd" | python3 -c '
 import shlex, sys
 cmd = sys.stdin.read()
 try:
@@ -273,12 +306,14 @@ except Exception:
   parts = cmd.split()
 for p in parts:
   print(p)
-PY
-<<<"$cmd" 2>/dev/null)
-  else
-    # Fallback: simple split (less robust but works for most cases)
-    read -ra toks <<<"$cmd"
-  fi
+' 2>/dev/null)"
+
+  # Build array line by line (bash 3.2 compatible)
+  local -a toks=()
+  local line
+  while IFS= read -r line; do
+    toks[${#toks[@]}]="$line"
+  done <<< "$toks_output"
 
   # Find the first rg/grep token
   local i
@@ -344,7 +379,6 @@ if [[ "${1:-}" == "--bash-filter" ]]; then
 
     # Fallback path: last token that's not a flag (validated after cd)
     GREP_CMD="${COMMAND%%|*}"
-    local last_token
     last_token="$(printf '%s' "$GREP_CMD" | awk '{print $NF}')"
     # Only use if it doesn't look like a flag
     if [[ "$last_token" != -* ]] && [[ -n "$last_token" ]]; then
@@ -362,6 +396,14 @@ fi
 # Working directory & repo root discovery
 # ---------------------------------------------------------------------------
 SESSION_CWD="$(printf '%s' "$HOOK_INPUT" | jq -r '.session_cwd // .cwd // empty' 2>/dev/null)"
+
+# Expand tilde to $HOME (bash doesn't expand ~ in variables)
+# Use string prefix check, not glob pattern (~/*)
+if [[ "${PATH_ARG:0:2}" == "~/" ]]; then
+  PATH_ARG="$HOME/${PATH_ARG:2}"
+elif [[ "$PATH_ARG" == "~" ]]; then
+  PATH_ARG="$HOME"
+fi
 
 # Prefer path if absolute
 if [[ "$PATH_ARG" == /* && -d "$PATH_ARG" ]]; then
@@ -528,10 +570,13 @@ if [[ -d "$PATTERN" || "$PATTERN" == */ ]]; then
   augment_directory "${PATTERN%/}"
 fi
 
-# 3) Tauri snake_case commands
-if printf '%s' "$PATTERN" | grep -qE '^[a-z][a-z0-9]*(_[a-z0-9]+)+$'; then
-  augment_tauri_command "$PATTERN"
-fi
+# 3) Tauri snake_case commands - DISABLED in v14
+# Snake_case patterns now go through loct find (step 6) for better results.
+# This was causing previous_response_id to hit loct commands instead of loct find.
+# Use `loct commands` directly if you need Tauri command bridge analysis.
+# if printf '%s' "$PATTERN" | grep -qE '^[a-z][a-z0-9]*(_[a-z0-9]+)+$'; then
+#   augment_tauri_command "$PATTERN"
+# fi
 
 # 4) File-like pattern (extension) -> try to resolve and slice
 if printf '%s' "$PATTERN" | grep -qE '\.(ts|tsx|rs|js|jsx|py|vue|svelte|css|scss)$'; then
