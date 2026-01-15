@@ -585,7 +585,7 @@ if printf '%s' "$PATTERN" | grep -qE '\.(ts|tsx|rs|js|jsx|py|vue|svelte|css|scss
 fi
 
 # 5) Multi-term symbol search with | alternation or .* wildcards
-# E.g., "VistaAgent|run_with_events", "canonical_model.*vision|vision.*endpoint"
+# E.g., "ApiClient|send_request", "user_model.*fetch|fetch.*endpoint"
 # Transform: split on | and .* to extract individual terms
 if printf '%s' "$PATTERN" | grep -qE '\||\.\*|\.\+' && printf '%s' "$PATTERN" | grep -qE '[A-Z_]'; then
   # Transform: replace .* and .+ with |, then clean up regex noise
