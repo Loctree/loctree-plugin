@@ -1,0 +1,33 @@
+{
+  "name": "loctree",
+  "version": "1.0.0",
+  "description": "A holographic map of code for AI agents. When Claude searches, loctree adds semantic context: symbol definitions, dependency graphs, impact analysis, and dead code detection.",
+  "author": {
+    "name": "VetCoders",
+    "url": "https://github.com/Loctree"
+  },
+  "license": "MIT",
+  "keywords": [
+    "codebase-intelligence",
+    "ast",
+    "dependency-graph",
+    "code-analysis",
+    "dead-code",
+    "symbol-search",
+    "semantic-search",
+    "auto-augment"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Loctree/loctree-plugin"
+  },
+  "prerequisites": {
+    "cli": "loct --version",
+    "install": "cargo install loctree",
+    "alternatives": [
+      "brew install loctree",
+      "npm install -g loctree"
+    ]
+  },
+  "homepage": "https://loct.io"
+}

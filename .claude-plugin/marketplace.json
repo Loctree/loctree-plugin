@@ -1,0 +1,21 @@
+{
+  "plugins": [
+    {
+      "name": "loctree",
+      "description": "Automatic codebase intelligence. When Claude searches, loctree adds semantic context: symbol definitions, dependency graphs, impact analysis.",
+      "version": "1.0.0",
+      "source": ".",
+      "category": "code-analysis",
+      "tags": [
+        "codebase",
+        "ast",
+        "dependency-graph",
+        "dead-code",
+        "auto-augment",
+        "search",
+        "semantic"
+      ],
+      "featured": true
+    }
+  ]
+}
