@@ -60,7 +60,7 @@ Loctree automatically augments Claude's searches with semantic context:
 
 ## Features
 
-### Automatic Search Augmentation
+### Search Augmentation (Grep/Bash)
 
 The PostToolUse hook intercepts Grep/Bash searches and adds:
 
@@ -68,6 +68,42 @@ The PostToolUse hook intercepts Grep/Bash searches and adds:
 - **Semantic matches** (similar names)
 - **Cross-match files** (files with multiple query terms)
 - **Dead code status** (is it actually used?)
+
+### File Context (Read)
+
+When Claude reads a source file, the hook automatically provides:
+
+- **File structure** (`loct slice`) — exports, imports, LOC breakdown
+- **Impact analysis** (`loct impact`) — what depends on this file
+- **Dependency depth** — direct and transitive consumers
+
+```
+LOCTREE FILE CONTEXT
+repo: my-project
+file: src/contexts/AuthContext.tsx
+
+--- FILE STRUCTURE (slice) ---
+Core (1 files, 420 LOC)
+Deps (5 files, 1,890 LOC)
+
+--- IMPACT ANALYSIS ---
+Direct consumers (12 files)
+Transitive impact (38 files)
+[!] Removing this file would affect 50 files
+```
+
+### Edit Warnings (Edit)
+
+After Claude edits a file, the hook analyzes impact and warns about critical files:
+
+- **Impact report** — shows direct and transitive dependents
+- **Critical file warning** — files with 10+ consumers get a prominent alert
+- **Change awareness** — helps Claude understand ripple effects
+
+```
+[!] CRITICAL FILE: src/contexts/ThemeContext.tsx has 16 direct consumers
+(67 total affected). Changes here have HIGH IMPACT.
+```
 
 ### Smart Pattern Recognition
 
@@ -118,6 +154,17 @@ loct scan
 
 ## How It Works
 
+### Hook Overview
+
+| Tool | Hook | Purpose |
+|------|------|---------|
+| **Grep** | `loct-grep-augment.sh` | Adds semantic symbol search to grep results |
+| **Bash** | `loct-grep-augment.sh --bash-filter` | Same for `rg`/`grep` in bash commands |
+| **Read** | `loct-read-context.sh` | Shows file structure and impact when reading |
+| **Edit** | `loct-edit-warning.sh` | Warns about editing high-impact files |
+
+### Example: Search Flow
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  Claude Code Session                                        │
@@ -145,6 +192,51 @@ loct scan
 │                                                             │
 │  5. Claude now understands the codebase structure!          │
 │                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Example: Read Flow
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  You: "Look at src/contexts/AuthContext.tsx"                │
+│                    ↓                                        │
+│  Claude runs: Read tool                                     │
+│                    ↓                                        │
+│  PostToolUse Hook activates                                 │
+│  - Runs: loct slice "src/contexts/AuthContext.tsx"          │
+│  - Runs: loct impact "src/contexts/AuthContext.tsx"         │
+│                    ↓                                        │
+│  Claude sees file content + context:                        │
+│  ┌───────────────────────────────────────────────────┐     │
+│  │ File structure: 1 file core, 5 deps (1,890 LOC)   │     │
+│  │ Direct consumers: 12 files                         │     │
+│  │ Total impact: 50 files would break if removed     │     │
+│  └───────────────────────────────────────────────────┘     │
+│                                                             │
+│  Claude immediately knows: "This is a critical file,       │
+│  I should be careful with changes"                          │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Example: Edit Warning
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Claude edits src/contexts/ThemeContext.tsx                 │
+│                    ↓                                        │
+│  PostToolUse Hook activates                                 │
+│  - Runs: loct impact "src/contexts/ThemeContext.tsx"        │
+│  - Detects: 16 direct consumers (above threshold)           │
+│                    ↓                                        │
+│  [!] CRITICAL FILE WARNING                                  │
+│  ┌───────────────────────────────────────────────────┐     │
+│  │ src/contexts/ThemeContext.tsx has 16 direct       │     │
+│  │ consumers (67 total affected).                    │     │
+│  │ Changes here have HIGH IMPACT.                    │     │
+│  └───────────────────────────────────────────────────┘     │
+│                                                             │
+│  Claude is now aware of the change's blast radius           │
 └─────────────────────────────────────────────────────────────┘
 ```
 
