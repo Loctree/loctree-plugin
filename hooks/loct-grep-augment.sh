@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# loct-grep-augment.sh v14 - SNAKE_CASE + CWD + OUTPUT CAP
+# loct-grep-augment.sh v17 - FALLBACK extracts words from complex patterns
 # ============================================================================
 # Purpose:
 #   PostToolUse hook for Claude Code that augments rg/grep searches with loctree
@@ -621,6 +621,24 @@ fi
 if printf '%s' "$PATTERN" | grep -qiE 'dead|unused|orphan|stale|deprecated|circular|cycle|duplicate|twin'; then
   augment_health
 fi
+
+# 9) FALLBACK: No pattern matched above - try loct find anyway
+# This catches cases like:
+#   - "assistive" (plain lowercase word)
+#   - "Config::load" (:: not handled by multi-term)
+#   - "assert result[0].isupper()" (complex expression → extract words)
+#
+# Strategy: extract alphanumeric words (3+ chars), join with |
+CLEAN_SYM="$(printf '%s' "$PATTERN" | \
+  sed 's/\\//g' | \
+  tr -cs 'a-zA-Z0-9_' ' ' | \
+  tr ' ' '\n' | \
+  grep -E '^[a-zA-Z_][a-zA-Z0-9_]{2,}$' | \
+  head -5 | \
+  tr '\n' '|' | \
+  sed 's/|$//')"
+# Try find with cleaned pattern (ignore failure)
+[[ -n "$CLEAN_SYM" ]] && augment_symbol "$CLEAN_SYM" 2>/dev/null || true
 
 # Otherwise: no augmentation
 exit 0

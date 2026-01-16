@@ -52,13 +52,28 @@ Claude Code's built-in search tools find **text matches**. But you need **code u
 
 ## Installation
 
-### Prerequisites
+### Quick Install (recommended)
+
+```bash
+# Install loctree CLI first
+cargo install loctree  # or: brew install loctree
+
+# Then install the plugin
+curl -fsSL https://raw.githubusercontent.com/VetCoders/loctree-plugin/main/install.sh | bash
+```
+
+### Manual Install
+
+<details>
+<summary>Click to expand manual installation steps</summary>
+
+#### Prerequisites
 
 - [loctree CLI](https://loct.io) v0.8.0+
 - jq (JSON processor)
 - Claude Code v1.0.0+
 
-### 1. Install loctree CLI
+#### 1. Install loctree CLI
 
 ```bash
 cargo install loctree
@@ -66,7 +81,7 @@ cargo install loctree
 brew install loctree
 ```
 
-### 2. Install hook scripts
+#### 2. Install hook scripts
 
 ```bash
 # Clone the plugin
@@ -79,7 +94,7 @@ cp hooks/*.sh ~/.claude/hooks/
 chmod +x ~/.claude/hooks/loct-*.sh
 ```
 
-### 3. Configure Claude Code
+#### 3. Configure Claude Code
 
 Add to `~/.claude/settings.json`:
 
@@ -108,15 +123,17 @@ Add to `~/.claude/settings.json`:
 }
 ```
 
-### 4. Verify installation
+#### 4. Verify installation
 
 ```bash
 bash scripts/verify-install.sh
 ```
 
-### 5. Restart Claude Code
+</details>
 
-Run `/clear` or restart the application.
+### After Installation
+
+Restart Claude Code (run `/clear` or restart the app).
 
 ## Quick Start
 
