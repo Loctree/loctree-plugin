@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# loct-grep-augment.sh v17 - FALLBACK extracts words from complex patterns
+# loct-grep-augment.sh v18 - v17 + REDIRECTION SKIP from v15
 # ============================================================================
 # Purpose:
 #   PostToolUse hook for Claude Code that augments rg/grep searches with loctree
@@ -30,7 +30,7 @@ command -v jq   >/dev/null 2>&1 || exit 0
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
-LOG_FILE="${LOCT_HOOK_LOG_FILE:-$HOME/.claude/logs/loct-hook.log}"
+LOG_FILE="${LOCT_HOOK_LOG_FILE:-$HOME/.claude/logs/loct-grep.log}"
 mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
 
 log_line() {
@@ -353,6 +353,10 @@ for p in parts:
     # Skip flags and empty tokens
     [[ "$candidate" == -* ]] && continue
     [[ -z "$candidate" ]] && continue
+    # Skip shell redirections (2>/dev/null, >/tmp/out, 2>&1, etc.)
+    [[ "$candidate" =~ ^[0-9]*\>[^\&] ]] && continue
+    [[ "$candidate" =~ ^[0-9]*\>\& ]] && continue
+    [[ "$candidate" =~ ^\<\( ]] && continue
     # Accept as path candidate (will be validated after cd)
     path="$candidate"
     break
@@ -377,8 +381,10 @@ if [[ "${1:-}" == "--bash-filter" ]]; then
     [[ -z "$PATTERN" ]] && PATTERN="$(printf '%s' "$COMMAND" | grep -oE "'[^']+'" | head -1 | tr -d "'")"
     [[ -z "$PATTERN" ]] && PATTERN="$(printf '%s' "$COMMAND" | sed -nE 's/.*\b(rg|grep)\b[[:space:]]+([^[:space:]-][^[:space:]]*).*/\2/p')"
 
-    # Fallback path: last token that's not a flag (validated after cd)
+    # Fallback path: last token that's not a flag or redirection
     GREP_CMD="${COMMAND%%|*}"
+    # Strip shell redirections before extracting path
+    GREP_CMD="$(printf '%s' "$GREP_CMD" | sed -E 's/ *[0-9]*>[^[:space:]]* *//g; s/ *[0-9]*>&[0-9]* *//g')"
     last_token="$(printf '%s' "$GREP_CMD" | awk '{print $NF}')"
     # Only use if it doesn't look like a flag
     if [[ "$last_token" != -* ]] && [[ -n "$last_token" ]]; then

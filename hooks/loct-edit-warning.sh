@@ -28,7 +28,7 @@ command -v jq   >/dev/null 2>&1 || exit 0
 # Configuration
 # ---------------------------------------------------------------------------
 CRITICAL_THRESHOLD=10  # Show warning if 10+ direct consumers
-LOG_FILE="${LOCT_HOOK_LOG_FILE:-$HOME/.claude/logs/loct-hook.log}"
+LOG_FILE="${LOCT_HOOK_LOG_FILE:-$HOME/.claude/logs/loct-edit.log}"
 mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
 
 log_line() {

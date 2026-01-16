@@ -5,7 +5,9 @@
 
 ## Overview
 
-Loctree automatically augments Claude Code's search results with semantic context. No manual commands needed — just search normally and receive symbol definitions, dependency graphs, dead code status, and impact analysis alongside your grep results.
+Loctree automatically augments Claude Code's search results with semantic context. No manual commands needed — just
+search normally and receive symbol definitions, dependency graphs, dead code status, and impact analysis alongside your
+grep results.
 
 <p align="center">
   <img src="assets/loctree-logo.png" alt="Loctree Logo" width="400">
@@ -24,9 +26,9 @@ Claude Code's built-in search tools find **text matches**. But you need **code u
 
 ## The Solution
 
-| Claude Searches | Claude Receives |
-|-----------------|-----------------|
-| `grep "UserService"` | 10 text matches |
+| Claude Searches                | Claude Receives                                                      |
+|--------------------------------|----------------------------------------------------------------------|
+| `grep "UserService"`           | 10 text matches                                                      |
 | `grep "UserService"` + loctree | 10 text matches **+ symbol definitions + usages + dead code status** |
 
 **Zero friction.** No manual commands. Just search normally.
@@ -43,23 +45,21 @@ Claude Code's built-in search tools find **text matches**. But you need **code u
 
 ## Tech Stack
 
-| Component | Technology | Purpose |
-|-----------|------------|---------|
-| Core CLI | [loctree](https://loct.io) | AST-based code analysis |
-| Hook System | Bash + jq | PostToolUse integration |
-| Languages | TypeScript, Rust, Python, Go, Vue, Svelte | Supported codebases |
-| Caching | `.loctree/` snapshot | Fast subsequent queries |
+| Component   | Technology                                | Purpose                 |
+|-------------|-------------------------------------------|-------------------------|
+| Core CLI    | [loctree](https://loct.io)                | Code map engine         |
+| Hook System | Bash + jq                                 | PostToolUse integration |
+| Languages   | TypeScript, Rust, Python, Go, Vue, Svelte | Supported codebases     |
+| Caching     | `.loctree/` snapshot                      | Fast subsequent queries |
 
 ## Installation
 
 ### Quick Install (recommended)
 
-```bash
-# Install loctree CLI first
-cargo install loctree  # or: brew install loctree
+#### Install via curl command (it will install both loctree cli and hook scripts)
 
-# Then install the plugin
-curl -fsSL https://raw.githubusercontent.com/VetCoders/loctree-plugin/main/install.sh | bash
+```bash
+curl -fsSL https://raw.githubusercontent.com/Loctree/loctree-plugin/main/install.sh | bash
 ```
 
 ### Manual Install
@@ -76,9 +76,7 @@ curl -fsSL https://raw.githubusercontent.com/VetCoders/loctree-plugin/main/insta
 #### 1. Install loctree CLI
 
 ```bash
-cargo install loctree
-# or
-brew install loctree
+curl -fsSL https://loct.io/install.sh | bash
 ```
 
 #### 2. Install hook scripts
@@ -104,19 +102,39 @@ Add to `~/.claude/settings.json`:
     "PostToolUse": [
       {
         "matcher": "Grep",
-        "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/loct-grep-augment.sh" }]
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.claude/hooks/loct-grep-augment.sh"
+          }
+        ]
       },
       {
         "matcher": "Bash",
-        "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/loct-grep-augment.sh --bash-filter" }]
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.claude/hooks/loct-grep-augment.sh --bash-filter"
+          }
+        ]
       },
       {
         "matcher": "Read",
-        "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/loct-read-context.sh" }]
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.claude/hooks/loct-read-context.sh"
+          }
+        ]
       },
       {
         "matcher": "Edit",
-        "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/loct-edit-warning.sh" }]
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.claude/hooks/loct-edit-warning.sh"
+          }
+        ]
       }
     ]
   }
@@ -173,12 +191,12 @@ flowchart TD
 
 ### Hook Overview
 
-| Tool | Hook | Purpose |
-|------|------|---------|
-| **Grep** | `loct-grep-augment.sh` | Adds semantic symbol search |
-| **Bash** | `loct-grep-augment.sh --bash-filter` | Same for rg/grep commands |
-| **Read** | `loct-read-context.sh` | File structure + impact |
-| **Edit** | `loct-edit-warning.sh` | Critical file warnings |
+| Tool     | Hook                                 | Purpose                     |
+|----------|--------------------------------------|-----------------------------|
+| **Grep** | `loct-grep-augment.sh`               | Adds semantic symbol search |
+| **Bash** | `loct-grep-augment.sh --bash-filter` | Same for rg/grep commands   |
+| **Read** | `loct-read-context.sh`               | File structure + impact     |
+| **Edit** | `loct-edit-warning.sh`               | Critical file warnings      |
 
 ### Example Output
 
@@ -221,34 +239,34 @@ export LOCT_HOOK_LOG_FILE=/dev/null
 
 ### Pattern Recognition
 
-| Pattern | Detection | Action |
-|---------|-----------|--------|
-| `PascalCase` | Component/Class | `loct find` |
-| `camelCase` | Function/Variable | `loct find` |
-| `snake_case` | Rust/Python/Tauri | `loct find` |
-| `A\|B` | Multi-term | Search both |
-| `dead\|unused` | Health keyword | `loct health` |
+| Pattern        | Detection         | Action        |
+|----------------|-------------------|---------------|
+| `PascalCase`   | Component/Class   | `loct find`   |
+| `camelCase`    | Function/Variable | `loct find`   |
+| `snake_case`   | Rust/Python/Tauri | `loct find`   |
+| `A\|B`         | Multi-term        | Search both   |
+| `dead\|unused` | Health keyword    | `loct health` |
 
 ## Performance
 
-| Operation | Cold (no cache) | Warm (cached) |
-|-----------|-----------------|---------------|
-| `loct find` | ~15s | ~0.3s |
-| `loct slice` | ~15s | ~0.2s |
-| `loct impact` | ~15s | ~0.2s |
-| `loct health` | ~20s | ~0.5s |
+| Operation     | Cold (no cache) | Warm (cached) |
+|---------------|-----------------|---------------|
+| `loct find`   | ~15s            | ~0.3s         |
+| `loct slice`  | ~15s            | ~0.2s         |
+| `loct impact` | ~15s            | ~0.2s         |
+| `loct health` | ~20s            | ~0.5s         |
 
 Hook overhead: **< 300ms** per augmented search.
 
 ## vs. ast-grep
 
-| Feature | ast-grep | loctree |
-|---------|----------|---------|
-| Activation | Manual | **Automatic** (hook-based) |
-| Learning curve | Write AST patterns | **Zero** — just grep |
-| Dead code | No | **Yes** |
-| Dependency graph | No | **Yes** |
-| Impact analysis | No | **Yes** |
+| Feature          | ast-grep           | loctree                    |
+|------------------|--------------------|----------------------------|
+| Activation       | Manual             | **Automatic** (hook-based) |
+| Learning curve   | Write AST patterns | **Zero** — just grep       |
+| Dead code        | No                 | **Yes**                    |
+| Dependency graph | No                 | **Yes**                    |
+| Impact analysis  | No                 | **Yes**                    |
 
 ## Roadmap
 
