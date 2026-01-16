@@ -17,7 +17,7 @@ When you search for code patterns, the hook automatically:
 3. **Runs `loct find`** to get semantic matches
 4. **Adds context**: definitions, usages, cross-match files, dead code status
 
-**Example**: You grep for `VistaAgent.*stream` → Hook transforms to `stream|VistaAgent` → Returns symbol definitions + semantic matches + cross-match files showing where both terms appear together.
+**Example**: You grep for `ApiClient.*request` → Hook transforms to `request|ApiClient` → Returns symbol definitions + semantic matches + cross-match files showing where both terms appear together.
 
 ## Explicit Commands
 

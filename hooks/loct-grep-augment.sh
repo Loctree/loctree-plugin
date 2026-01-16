@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# loct-grep-augment.sh v13 - CLEAN OUTPUT + SMART MULTI-TERM PARSING
+# loct-grep-augment.sh v14 - SNAKE_CASE + CWD + OUTPUT CAP
 # ============================================================================
 # Purpose:
 #   PostToolUse hook for Claude Code that augments rg/grep searches with loctree
@@ -102,31 +102,65 @@ HOOK_EVENT_NAME="$(printf '%s' "$HOOK_INPUT" | jq -r '.hook_event_name // empty'
 # This script is intended for PostToolUse, but we fail open.
 
 # ---------------------------------------------------------------------------
-# Log the original Claude search (best effort)
+# Log the original Claude search (best effort) - CLEAN ASCII format
 # ---------------------------------------------------------------------------
 log_claude_search() {
   local tool_name tool_pattern tool_path
   tool_name="$(printf '%s' "$HOOK_INPUT" | jq -r '.tool_name // "(unknown)"' 2>/dev/null)"
   tool_pattern="$(printf '%s' "$HOOK_INPUT" | jq -r '.tool_input.pattern // .tool_input.command // "(unknown)"' 2>/dev/null)"
   tool_path="$(printf '%s' "$HOOK_INPUT" | jq -r '.tool_input.path // "."' 2>/dev/null)"
-  # tool_response can be large; log a small preview.
-  local tool_resp_preview
-  tool_resp_preview="$(printf '%s' "$HOOK_INPUT" | jq -c '.tool_response // empty' 2>/dev/null | head -c 2000)"
+
+  # Shorten pattern if too long
+  [[ ${#tool_pattern} -gt 60 ]] && tool_pattern="${tool_pattern:0:57}..."
 
   log_line ""
-  log_line "==== CLAUDE TOOL USE ===="
+  log_line "==== CLAUDE: $tool_name ===="
   log_line "time:    $(date '+%Y-%m-%d %H:%M:%S')"
-  log_line "event:   ${HOOK_EVENT_NAME:-?}"
-  log_line "tool:    $tool_name"
   log_line "pattern: $tool_pattern"
   log_line "path:    $tool_path"
-  if [[ -n "$tool_resp_preview" ]]; then
-    log_line "tool_response (preview):"
-    while IFS= read -r line; do
-      log_line "  $line"
-    done <<<"$tool_resp_preview"
+
+  # Parse tool_response based on tool type
+  local tool_resp
+  tool_resp="$(printf '%s' "$HOOK_INPUT" | jq '.tool_response // empty' 2>/dev/null)"
+
+  if [[ -n "$tool_resp" && "$tool_resp" != "null" ]]; then
+    if [[ "$tool_name" == "Grep" ]]; then
+      local mode num_files
+      mode="$(printf '%s' "$tool_resp" | jq -r '.mode // "?"' 2>/dev/null)"
+      num_files="$(printf '%s' "$tool_resp" | jq -r '.numFiles // 0' 2>/dev/null)"
+      log_line "result:  $num_files files ($mode)"
+
+      # Show filenames
+      printf '%s' "$tool_resp" | jq -r '.filenames[]? // empty' 2>/dev/null | head -10 | while IFS= read -r filepath; do
+        local short="${filepath##*/Libraxis/}"
+        [[ ${#short} -gt 60 ]] && short="...${short: -57}"
+        log_line "  -> $short"
+      done
+
+    elif [[ "$tool_name" == "Bash" ]]; then
+      local stdout
+      stdout="$(printf '%s' "$tool_resp" | jq -r '.stdout // ""' 2>/dev/null)"
+      if [[ -n "$stdout" ]]; then
+        local lc
+        lc="$(printf '%s' "$stdout" | wc -l | tr -d ' ')"
+        log_line "result:  $lc lines"
+        printf '%s' "$stdout" | head -8 | while IFS= read -r line; do
+          # Smart shorten for grep output (path:line:content)
+          if [[ "$line" == *:*:* ]]; then
+            local fp="${line%%:*}" rest="${line#*:}"
+            local fn="${fp##*/}" par="${fp%/*}"; par="${par##*/}"
+            line="$par/$fn:$rest"
+          fi
+          [[ ${#line} -gt 70 ]] && line="${line:0:67}..."
+          log_line "  $line"
+        done
+        [[ "$lc" -gt 8 ]] && log_line "  ... (+$((lc - 8)) more)"
+      else
+        log_line "result:  (empty)"
+      fi
+    fi
   fi
-  log_line "=========================="
+  log_line "============================"
 }
 
 log_claude_search
@@ -170,10 +204,27 @@ extract_count() {
   printf '%s\n' "$text" | sed -nE "s/^=== ${label} \(([0-9]+)\) ===$/\1/p" | head -1
 }
 
+# Max payload size (32KB) to avoid bloating additionalContext
+MAX_PAYLOAD_BYTES=32768
+
+truncate_payload() {
+  local text="$1"
+  local max="$2"
+  if [[ ${#text} -gt $max ]]; then
+    printf '%s\n\n[...truncated, showing first %d bytes of %d total]' \
+      "${text:0:$max}" "$max" "${#text}"
+  else
+    printf '%s' "$text"
+  fi
+}
+
 emit_hook_output() {
   # emit_hook_output <action> <payload>
   local action="$1"
   local payload="$2"
+
+  # Truncate if too large
+  payload="$(truncate_payload "$payload" "$MAX_PAYLOAD_BYTES")"
 
   # Repo label (best effort)
   local repo
@@ -232,18 +283,21 @@ PATH_ARG="."
 parse_rg_grep_command() {
   # Parses a shell command string and extracts:
   #   - pattern (first non-flag after rg/grep)
-  #   - path (last existing file/dir after pattern)
+  #   - path (last non-flag token after pattern, WITHOUT checking FS)
   # Uses python shlex for robust quoting.
+  #
+  # NOTE: We do NOT check if path exists here — that's done AFTER cd to SESSION_CWD.
+  #       This fixes the cwd mismatch bug where relative paths weren't found.
   local cmd="$1"
 
   # Ignore everything after first pipe for token parsing
   cmd="${cmd%%|*}"
 
   local tool_index=-1
-  local -a toks=()
 
-  # shlex split via python
-  mapfile -t toks < <(python3 - <<'PY'
+  # shlex split via python - bash 3.2 compatible (no mapfile)
+  local toks_output
+  toks_output="$(printf '%s' "$cmd" | python3 -c '
 import shlex, sys
 cmd = sys.stdin.read()
 try:
@@ -252,8 +306,14 @@ except Exception:
   parts = cmd.split()
 for p in parts:
   print(p)
-PY
-<<<"$cmd" 2>/dev/null)
+' 2>/dev/null)"
+
+  # Build array line by line (bash 3.2 compatible)
+  local -a toks=()
+  local line
+  while IFS= read -r line; do
+    toks[${#toks[@]}]="$line"
+  done <<< "$toks_output"
 
   # Find the first rg/grep token
   local i
@@ -268,7 +328,7 @@ PY
 
   [[ "$tool_index" -lt 0 ]] && return 1
 
-  # Parse pattern
+  # Parse pattern: first non-flag after tool
   local pattern=""
   i=$((tool_index + 1))
   for ((; i<${#toks[@]}; i++)); do
@@ -285,15 +345,17 @@ PY
 
   [[ -z "$pattern" ]] && return 1
 
-  # Parse path: walk backwards from end to i, pick last existing file/dir
+  # Parse path: last non-flag token after pattern (NO FS check here!)
   local path="."
   local j
   for ((j=${#toks[@]}-1; j>=i; j--)); do
     local candidate="${toks[$j]}"
-    if [[ -e "$candidate" || -d "$candidate" ]]; then
-      path="$candidate"
-      break
-    fi
+    # Skip flags and empty tokens
+    [[ "$candidate" == -* ]] && continue
+    [[ -z "$candidate" ]] && continue
+    # Accept as path candidate (will be validated after cd)
+    path="$candidate"
+    break
   done
 
   printf '%s\n%s\n' "$pattern" "$path"
@@ -315,9 +377,15 @@ if [[ "${1:-}" == "--bash-filter" ]]; then
     [[ -z "$PATTERN" ]] && PATTERN="$(printf '%s' "$COMMAND" | grep -oE "'[^']+'" | head -1 | tr -d "'")"
     [[ -z "$PATTERN" ]] && PATTERN="$(printf '%s' "$COMMAND" | sed -nE 's/.*\b(rg|grep)\b[[:space:]]+([^[:space:]-][^[:space:]]*).*/\2/p')"
 
+    # Fallback path: last token that's not a flag (validated after cd)
     GREP_CMD="${COMMAND%%|*}"
-    PATH_ARG="$(printf '%s' "$GREP_CMD" | awk '{print $NF}')"
-    [[ ! -e "$PATH_ARG" && ! -d "$PATH_ARG" ]] && PATH_ARG="."
+    last_token="$(printf '%s' "$GREP_CMD" | awk '{print $NF}')"
+    # Only use if it doesn't look like a flag
+    if [[ "$last_token" != -* ]] && [[ -n "$last_token" ]]; then
+      PATH_ARG="$last_token"
+    else
+      PATH_ARG="."
+    fi
   fi
 else
   PATTERN="$(printf '%s' "$HOOK_INPUT" | jq -r '.tool_input.pattern // empty' 2>/dev/null)"
@@ -328,6 +396,14 @@ fi
 # Working directory & repo root discovery
 # ---------------------------------------------------------------------------
 SESSION_CWD="$(printf '%s' "$HOOK_INPUT" | jq -r '.session_cwd // .cwd // empty' 2>/dev/null)"
+
+# Expand tilde to $HOME (bash doesn't expand ~ in variables)
+# Use string prefix check, not glob pattern (~/*)
+if [[ "${PATH_ARG:0:2}" == "~/" ]]; then
+  PATH_ARG="$HOME/${PATH_ARG:2}"
+elif [[ "$PATH_ARG" == "~" ]]; then
+  PATH_ARG="$HOME"
+fi
 
 # Prefer path if absolute
 if [[ "$PATH_ARG" == /* && -d "$PATH_ARG" ]]; then
@@ -350,13 +426,24 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Validate PATH_ARG now that we're in the correct cwd
+# ---------------------------------------------------------------------------
+if [[ "$PATH_ARG" != "." ]] && [[ ! -e "$PATH_ARG" ]] && [[ ! -d "$PATH_ARG" ]]; then
+  # Path doesn't exist in repo — reset to "."
+  PATH_ARG="."
+fi
+
+# ---------------------------------------------------------------------------
 # Validation / filtering
 # ---------------------------------------------------------------------------
 [[ -z "$PATTERN" ]] && exit 0
 [[ ${#PATTERN} -lt 3 ]] && exit 0
 
-# Skip heavy regex patterns (avoid accidental expensive work)
-printf '%s' "$PATTERN" | grep -qE '[\|\*\+\?\[\]\(\)\{\}\\]{3,}' && exit 0
+# Skip truly heavy regex patterns (nested groups, excessive wildcards)
+# But allow simple alternations like foo|bar|baz
+if printf '%s' "$PATTERN" | grep -qE '(\([^)]*\)){3,}'; then exit 0; fi  # 3+ nested groups
+if printf '%s' "$PATTERN" | grep -qE '(\.\*.*){4,}'; then exit 0; fi     # 4+ .* wildcards
+if printf '%s' "$PATTERN" | grep -qE '\(\?[!=<]'; then exit 0; fi        # lookaheads/lookbehinds
 
 # Strip outer quotes
 PATTERN="${PATTERN%\"}"; PATTERN="${PATTERN#\"}"
@@ -483,10 +570,13 @@ if [[ -d "$PATTERN" || "$PATTERN" == */ ]]; then
   augment_directory "${PATTERN%/}"
 fi
 
-# 3) Tauri snake_case commands
-if printf '%s' "$PATTERN" | grep -qE '^[a-z][a-z0-9]*(_[a-z0-9]+)+$'; then
-  augment_tauri_command "$PATTERN"
-fi
+# 3) Tauri snake_case commands - DISABLED in v14
+# Snake_case patterns now go through loct find (step 6) for better results.
+# This was causing previous_response_id to hit loct commands instead of loct find.
+# Use `loct commands` directly if you need Tauri command bridge analysis.
+# if printf '%s' "$PATTERN" | grep -qE '^[a-z][a-z0-9]*(_[a-z0-9]+)+$'; then
+#   augment_tauri_command "$PATTERN"
+# fi
 
 # 4) File-like pattern (extension) -> try to resolve and slice
 if printf '%s' "$PATTERN" | grep -qE '\.(ts|tsx|rs|js|jsx|py|vue|svelte|css|scss)$'; then
@@ -495,7 +585,7 @@ if printf '%s' "$PATTERN" | grep -qE '\.(ts|tsx|rs|js|jsx|py|vue|svelte|css|scss
 fi
 
 # 5) Multi-term symbol search with | alternation or .* wildcards
-# E.g., "VistaAgent|run_with_events", "canonical_model.*vision|vision.*endpoint"
+# E.g., "ApiClient|send_request", "user_model.*fetch|fetch.*endpoint"
 # Transform: split on | and .* to extract individual terms
 if printf '%s' "$PATTERN" | grep -qE '\||\.\*|\.\+' && printf '%s' "$PATTERN" | grep -qE '[A-Z_]'; then
   # Transform: replace .* and .+ with |, then clean up regex noise

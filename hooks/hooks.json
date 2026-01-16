@@ -18,6 +18,24 @@
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/loct-grep-augment.sh\" --bash-filter"
           }
         ]
+      },
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/loct-read-context.sh\""
+          }
+        ]
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/loct-edit-warning.sh\""
+          }
+        ]
       }
     ]
   }

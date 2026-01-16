@@ -1,46 +1,21 @@
+# ⌜ Loctree ⌟
+
+**Semantic code intelligence for Claude Code.**
+**When Claude searches, loctree understands.**
+
+## Overview
+
+Loctree automatically augments Claude Code's search results with semantic context. No manual commands needed — just search normally and receive symbol definitions, dependency graphs, dead code status, and impact analysis alongside your grep results.
+
 <p align="center">
   <img src="assets/loctree-logo.png" alt="Loctree Logo" width="400">
 </p>
 
-<h1 align="center">Loctree Plugin for Claude Code</h1>
-
-<p align="center">
-  <strong>A holographic map of code for AI agents.</strong><br>
-  When Claude searches, loctree understands.
-</p>
-
-<p align="center">
-  <a href="https://loct.io">Website</a> •
-  <a href="https://github.com/Loctree/loctree-suite">CLI & MCP</a> •
-  <a href="#installation">Install</a>
-</p>
-
----
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│ Claude runs: grep "canonical_model.*vision"                 │
-│                         ↓                                   │
-│ Hook detects pattern, transforms: canonical_model|vision    │
-│                         ↓                                   │
-│ loct find "canonical_model|vision"                          │
-│                         ↓                                   │
-│ LOCTREE CONTEXT ADDED TO RESPONSE:                          │
-│ ┌─────────────────────────────────────────────────────────┐ │
-│ │ Symbol Matches (5):                                     │ │
-│ │   types/ai.rs:88      canonical_model (field)           │ │
-│ │   vision/prompt.rs:12 vision_prompt (function)          │ │
-│ │   chat/commands.rs:533 canonical_model: "vision"        │ │
-│ │                                                         │ │
-│ │ Semantic Matches: vision_analysis, model_config         │ │
-│ │ Cross-Match Files: chat/commands.rs has BOTH terms      │ │
-│ └─────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────┘
-```
+> **Status:** v1.0.0 — Production release with Grep, Read, and Edit hooks.
 
 ## The Problem
 
-Claude Code's built-in search tools (Grep, ripgrep) find **text matches**. But you need **code understanding**:
+Claude Code's built-in search tools find **text matches**. But you need **code understanding**:
 
 - Where is `MyComponent` **defined**?
 - What **imports** this file?
@@ -49,48 +24,39 @@ Claude Code's built-in search tools (Grep, ripgrep) find **text matches**. But y
 
 ## The Solution
 
-Loctree automatically augments Claude's searches with semantic context:
-
 | Claude Searches | Claude Receives |
 |-----------------|-----------------|
 | `grep "UserService"` | 10 text matches |
-| `grep "UserService"` + loctree hook | 10 text matches **+ 47 symbol definitions + usages + dead code status** |
+| `grep "UserService"` + loctree | 10 text matches **+ symbol definitions + usages + dead code status** |
 
 **Zero friction.** No manual commands. Just search normally.
 
 ## Features
 
-### Automatic Search Augmentation
+- **Search Augmentation**: Symbol definitions, semantic matches, dead code status
+- **File Context**: Dependencies and impact analysis when reading files
+- **Edit Warnings**: Alerts when modifying high-impact files (10+ consumers)
+- **Smart Pattern Recognition**: PascalCase, camelCase, snake_case, React hooks
+- **Multi-term Search**: `useAuth|useSession` finds both symbols
+- **Auto-caching**: First search creates snapshot (~15s), subsequent searches use cache (~0.3s)
+- **Live Logging**: All hook activity logged to `~/.claude/logs/loct-hook.log`
 
-The PostToolUse hook intercepts Grep/Bash searches and adds:
+## Tech Stack
 
-- **Symbol definitions** (where code is declared)
-- **Semantic matches** (similar names)
-- **Cross-match files** (files with multiple query terms)
-- **Dead code status** (is it actually used?)
-
-### Smart Pattern Recognition
-
-| Pattern | Detection | Action |
-|---------|-----------|--------|
-| `PascalCase` | Component/Class | `loct find` |
-| `camelCase` | Function/Variable | `loct find` |
-| `snake_case` | Rust/Python/Tauri | `loct find` |
-| `A.*B` or `A\|B` | Multi-term regex | Transform & search both |
-| `path/to/file.ts` | File path | `loct slice` |
-| `src/api/` | Directory | `loct focus` |
-
-### Deep Analysis Commands
-
-```bash
-loct --for-ai          # Codebase overview (start here!)
-loct find <symbol>     # Symbol search with semantics
-loct impact <file>     # What breaks if I change this?
-loct slice <file>      # Minimal dependency context
-loct health            # Dead code, cycles, duplicates
-```
+| Component | Technology | Purpose |
+|-----------|------------|---------|
+| Core CLI | [loctree](https://loct.io) | AST-based code analysis |
+| Hook System | Bash + jq | PostToolUse integration |
+| Languages | TypeScript, Rust, Python, Go, Vue, Svelte | Supported codebases |
+| Caching | `.loctree/` snapshot | Fast subsequent queries |
 
 ## Installation
+
+### Prerequisites
+
+- [loctree CLI](https://loct.io) v0.8.0+
+- jq (JSON processor)
+- Claude Code v1.0.0+
 
 ### 1. Install loctree CLI
 
@@ -100,100 +66,213 @@ cargo install loctree
 brew install loctree
 ```
 
-### 2. Install the plugin
-
-In Claude Code:
-
-```
-/plugin marketplace add Loctree/loctree-plugin
-/plugin install loctree
-```
-
-### 3. Initialize your project
+### 2. Install hook scripts
 
 ```bash
+# Clone the plugin
+git clone https://github.com/VetCoders/loctree-plugin.git
+cd loctree-plugin
+
+# Copy hooks to Claude config
+mkdir -p ~/.claude/hooks ~/.claude/logs
+cp hooks/*.sh ~/.claude/hooks/
+chmod +x ~/.claude/hooks/loct-*.sh
+```
+
+### 3. Configure Claude Code
+
+Add to `~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Grep",
+        "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/loct-grep-augment.sh" }]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/loct-grep-augment.sh --bash-filter" }]
+      },
+      {
+        "matcher": "Read",
+        "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/loct-read-context.sh" }]
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/loct-edit-warning.sh" }]
+      }
+    ]
+  }
+}
+```
+
+### 4. Verify installation
+
+```bash
+bash scripts/verify-install.sh
+```
+
+### 5. Restart Claude Code
+
+Run `/clear` or restart the application.
+
+## Quick Start
+
+```bash
+# Open Claude Code in your project
 cd your-project
-loct scan
+
+# Search for a symbol - loctree augments automatically
+# (First search takes ~15s to scan, subsequent searches ~0.3s)
+```
+
+Watch the log to see what's happening:
+
+```bash
+tail -f ~/.claude/logs/loct-hook.log
 ```
 
 ## How It Works
 
+```mermaid
+flowchart TD
+    A[User: Find useAuth] --> B[Claude: Grep useAuth]
+    B --> C[PostToolUse Hook]
+    C --> D{Pattern Type?}
+    D -->|PascalCase| E[loct find]
+    D -->|camelCase| E
+    D -->|snake_case| E
+    D -->|Health keyword| F[loct health]
+    E --> G[LOCTREE CONTEXT]
+    F --> G
+    G --> H[Claude receives augmented results]
+
+    C -.- C1[loct-grep-augment.sh]
+    E -.- E1[Symbol definitions + semantic matches]
+    F -.- F1[Dead code + cycles + duplicates]
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  Claude Code Session                                        │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  1. You ask: "Find where UserAuth is defined"               │
-│                    ↓                                        │
-│  2. Claude runs: grep "UserAuth"                            │
-│                    ↓                                        │
-│  3. PostToolUse Hook activates                              │
-│     - Detects "UserAuth" = PascalCase symbol                │
-│     - Runs: loct find "UserAuth"                            │
-│                    ↓                                        │
-│  4. Hook adds to response:                                  │
-│     ┌─────────────────────────────────────────────────┐    │
-│     │ LOCTREE CONTEXT                                  │    │
-│     │ ─────────────────                                │    │
-│     │ Symbol Matches (3):                              │    │
-│     │   src/auth/UserAuth.ts:15 (definition)          │    │
-│     │   src/hooks/useUserAuth.ts:8 (usage)            │    │
-│     │   src/api/auth.ts:42 (usage)                    │    │
-│     │                                                  │    │
-│     │ Dead Code Status: USED (imported by 7 files)    │    │
-│     └─────────────────────────────────────────────────┘    │
-│                                                             │
-│  5. Claude now understands the codebase structure!          │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
+
+### Hook Overview
+
+| Tool | Hook | Purpose |
+|------|------|---------|
+| **Grep** | `loct-grep-augment.sh` | Adds semantic symbol search |
+| **Bash** | `loct-grep-augment.sh --bash-filter` | Same for rg/grep commands |
+| **Read** | `loct-read-context.sh` | File structure + impact |
+| **Edit** | `loct-edit-warning.sh` | Critical file warnings |
+
+### Example Output
+
 ```
+LOCTREE CONTEXT
+═══════════════
+
+Symbol Matches (2):
+  src/hooks/useAuth.ts:15      [DEF] export function useAuth
+  src/contexts/AuthContext.tsx:42  [DEF] export const useAuth
+
+Semantic Matches (8):
+  useAuthState (0.67)  src/hooks/useAuthState.ts
+  AuthProvider (0.54)  src/contexts/AuthContext.tsx
+
+Dead Code Status: USED (imported by 7 files)
+```
+
+## CLI Reference
+
+```bash
+loct --for-ai          # AI-optimized codebase overview
+loct find <symbol>     # Symbol search with semantics
+loct slice <file>      # File dependencies
+loct impact <file>     # What breaks if I change this?
+loct health            # Dead code, cycles, duplicates
+```
+
+## Configuration
+
+### Environment Variables
+
+```bash
+# Custom log file location
+export LOCT_HOOK_LOG_FILE=~/my-custom.log
+
+# Disable logging
+export LOCT_HOOK_LOG_FILE=/dev/null
+```
+
+### Pattern Recognition
+
+| Pattern | Detection | Action |
+|---------|-----------|--------|
+| `PascalCase` | Component/Class | `loct find` |
+| `camelCase` | Function/Variable | `loct find` |
+| `snake_case` | Rust/Python/Tauri | `loct find` |
+| `A\|B` | Multi-term | Search both |
+| `dead\|unused` | Health keyword | `loct health` |
+
+## Performance
+
+| Operation | Cold (no cache) | Warm (cached) |
+|-----------|-----------------|---------------|
+| `loct find` | ~15s | ~0.3s |
+| `loct slice` | ~15s | ~0.2s |
+| `loct impact` | ~15s | ~0.2s |
+| `loct health` | ~20s | ~0.5s |
+
+Hook overhead: **< 300ms** per augmented search.
 
 ## vs. ast-grep
 
 | Feature | ast-grep | loctree |
 |---------|----------|---------|
-| **Activation** | Manual ("Use ast-grep to...") | **Automatic** (hook-based) |
-| **Learning curve** | Write AST patterns | **Zero** - just grep normally |
-| **Focus** | Pattern matching | **Codebase understanding** |
-| **Dead code** | ❌ | ✅ |
-| **Dependency graph** | ❌ | ✅ |
-| **Impact analysis** | ❌ | ✅ |
+| Activation | Manual | **Automatic** (hook-based) |
+| Learning curve | Write AST patterns | **Zero** — just grep |
+| Dead code | No | **Yes** |
+| Dependency graph | No | **Yes** |
+| Impact analysis | No | **Yes** |
 
-## Supported Languages
+## Roadmap
 
-- TypeScript / JavaScript / JSX / TSX
-- Rust
-- Python
-- Vue / Svelte
-- CSS / SCSS
+### Implemented
 
-## Requirements
+- [x] Grep search augmentation (symbol + semantic matches)
+- [x] Bash command filtering (rg/grep detection)
+- [x] Read file context (slice + impact)
+- [x] Edit warnings (critical file detection)
+- [x] Multi-term search (`A|B` alternation)
+- [x] Snake_case pattern support
+- [x] Live logging (`~/.claude/logs/loct-hook.log`)
+- [x] 32KB payload limit (prevents context bloat)
+- [x] Auto-caching (no manual `loct scan` needed)
 
-- Claude Code v1.0.0+
-- loctree CLI v0.8.0+
-- Git repository with `.loctree/` initialized
+### Planned
 
-## Performance
+- [ ] Claude Code marketplace integration
+- [ ] MCP server mode (direct tool, no hooks)
+- [ ] Custom pattern configuration
+- [ ] Project-specific settings
 
-| Operation | Time |
-|-----------|------|
-| `loct find` | ~280ms |
-| `loct impact` | ~50ms |
-| `loct slice` | ~80ms |
-| `loct health` | ~370ms |
+## Documentation
 
-Hook overhead: **< 300ms** per augmented search.
+- [Installation Guide](docs/INSTALLATION.md)
+- [Quick Start](docs/QUICK_START.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [FAQ](docs/FAQ.md)
+- [Changelog](docs/CHANGELOG.md)
+- [Hook Reference](docs/HOOKS.md)
 
 ## Contributing
 
-- [loctree-suite](https://github.com/Loctree/loctree-suite) - Core CLI and MCP server
-- [Issues](https://github.com/Loctree/loctree-plugin/issues) - Bug reports and feature requests
+- [loctree-suite](https://github.com/Loctree/loctree-suite) — Core CLI and MCP server
+- [Issues](https://github.com/VetCoders/loctree-plugin/issues) — Bug reports and feature requests
 
 ## License
 
-MIT License - see [LICENSE](LICENSE)
+MIT License — see [LICENSE](LICENSE)
 
 ---
 
 **Made with (งಠ_ಠ)ง by the ⌜ Loctree ⌟ 𝖙𝖊𝖆𝖒 (c) 2026
-Maciej & Monika + Klaudiusz (AI)**
+Maciej & Monika + Klaudiusz (AI) + Mixerka (AI)**
